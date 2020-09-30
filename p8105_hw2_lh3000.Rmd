@@ -67,13 +67,14 @@ month_df =
 precip_df =
   bind_rows(precip_2018, precip_2017)
 
-left_join(precip_df, month_df, by = "month")
+precip_df =
+  left_join(precip_df, month_df, by = "month")
 ```
 
-This dataset contains information from the Mr. Trashwheel trash collector in Baltimore, Maryland. As trash enters the inner harbor, the trashwheel collects that trash, and it stores it in a dumpster. This dataset contains information on year, month, and trash collected, include some specific kinds of trash. There are a total of `r nrow(trashwheel_df)` rows in our final dataset. Additional data sheets include month precipitation data. 
+This dataset contains information from the Mr. Trashwheel trash collector in Baltimore, Maryland. As trash enters the inner harbor, the trashwheel collects that trash, and stores it in a dumpster. The dataset contains information on year, month, and trash collected, include some specific kinds of trash. There are a total of `r nrow(trashwheel_df)` rows in our final dataset. Additional data sheets include month precipitation data. In this dataset:
 
-The total precipitation in 2018 is `r sum(pull(precip_2018, total))`. 
-The median number of sports balls in a dumpster in 2017 is `r median(pull(trashwheel_df, sports_balls))`.
+* The median number of sports balls found in a dumpster in 2017 was `r trashwheel_df %>% filter(year == 2017) %>% pull(sports_balls) %>% median()`
+* The total precipitation in 2018 was `r precip_df %>% filter(year == 2018) %>% pull(total) %>% sum()` inches.
 
 
 ## Problem 2
@@ -87,8 +88,9 @@ subway_df =
     janitor::clean_names() %>% 
     select(line:entry, vending, ada) %>%
     mutate(
-      entry = case_when(entry == "YES" ~ "TRUE",entry == "NO" ~ "FALSE"),
-      entry = as.logical(entry))
+      entry = case_when(entry == "YES" ~ "TRUE", entry == "NO" ~ "FALSE"),
+      entry = as.logical(entry)
+    )
 ```
 
 This dataset comes from NY Transit, with information on line, station, name, station latitude / longitude, routes served, entry, vending, entrance type, and ADA compliance. 
@@ -96,25 +98,84 @@ This dataset comes from NY Transit, with information on line, station, name, sta
 To clean the data, I first recoded the variable names into snake case, and then converted the entry variable from character (YES vs NO) to a logical variable (TRUE vs FALSE).
 
 The cleaned dataset has `r nrow(subway_df)` rows and `r ncol(subway_df)` columns. 
-The dataset is not very tidy (e.g. route1-11).
+The dataset is not very tidy (e.g. route1-11 should be collapsed into one column).
 
-There are `r distinct(subway_df, line, station_name) %>% nrow()` distinct stations.
-`r filter(subway_df, ada == TRUE) %>% distinct(line, station_name) %>% count()` stations are ADA compliant.
-`r filter(subway_df, vending == "NO" & entry == "TRUE") %>% nrow() / filter(subway_df, vending == "NO") %>% nrow()` of station entrances / exits without vending allow entrance.
+* There are `r distinct(subway_df, line, station_name) %>% count()` distinct stations.
+* `r filter(subway_df, ada == TRUE) %>% distinct(line, station_name) %>% count()` stations are ADA compliant.
+* `r filter(subway_df, vending == "NO" & entry == "TRUE") %>% count() / filter(subway_df, vending == "NO") %>% count()` of station entrances / exits without vending allow entrance.
 
 
 Reformat data to make route number and route name distinct variables.
+
 ```{r}
 subway_tidy = 
   subway_df %>% 
   mutate_at(vars(route8:route11), as.character) %>% 
   pivot_longer(
     route1:route11,
-    names_to = "route_name",
+    names_to = "route_number",
     names_prefix = "route",
-    values_to = "route_number"
-  )
+    values_to = "route_name"
+  ) %>% 
+  drop_na(route_name)
 ```
 
-There are `r filter(subway_tidy, route_number == "A") %>% distinct(line, station_name) %>% count()` distinct stations that serve the A train.
-Of the stations that serve the A train, `r filter(subway_tidy, route_number == "A" & ada == TRUE) %>% distinct(line, station_name) %>% count()` are ADA compliant.
+* There are `r filter(subway_tidy, route_name == "A") %>% distinct(line, station_name) %>% count()` distinct stations that serve the A train.
+* Of the stations that serve the A train, `r filter(subway_tidy, route_name == "A" & ada == TRUE) %>% distinct(line, station_name) %>% count()` are ADA compliant.
+
+
+## Problem 3
+
+Read and clean the pols-month dataset.
+
+```{r}
+pols_df = 
+  read_csv("./data/pols-month.csv") %>%
+  janitor::clean_names() %>%
+  separate(mon, into = c("year", "month", "day")) %>%
+  mutate(
+    month = month.abb[as.factor(month)],
+    president = case_when(prez_gop == 1 ~ "gop", prez_dem == 1 ~ "dem")
+  ) %>% 
+  select(-c(prez_dem, prez_gop, day))
+```
+
+Read and clean the snp dataset.
+
+```{r}
+snp_df = 
+  read_csv("./data/snp.csv") %>%
+  janitor::clean_names() %>%
+  separate(date, into = c("month", "day", "year")) %>%
+  select(year, month, close)
+```
+
+Read and clean the unemployment dataset.
+
+```{r}
+unemployment_df = 
+  read_csv("./data/unemployment.csv") %>%
+  pivot_longer(
+    Jan:Dec,
+    names_to = "Month",
+    values_to = "unemp_pct"
+  ) %>% 
+  janitor::clean_names() %>% 
+  mutate(year = as.character(year))
+```
+
+Join the three datasets.
+
+```{r}
+join_df = 
+  left_join(pols_df, snp_df, by = c("year", "month")) %>% 
+  left_join(unemployment_df, by = c("year", "month"))
+```
+
+The three datasets are from a post called Science Isn't Broken from the FiveThirtyEight website founded by Nate Silver. They serve as part of the interactive tool where the reader can select the political party of interest and then can make a series of choices about both types and forms of variables to consider in the search for a significant association between political party and economic success.
+
+For data import and manipulation, I broke the date variable into year and month variables for merging purposes in dataset pols-month and snp. 
+
+
+
+
